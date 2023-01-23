@@ -1,8 +1,47 @@
 import fitz
 import pandas as pd
 import numpy as np
+import re
 from operator import itemgetter
 from section_headers import *
+from transformers import GPT2TokenizerFast
+from nltk.tokenize import sent_tokenize
+
+tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+
+def textbook_pdf2csv(pdf_file,chunk_size,overlap):
+    """
+    Obtain a csv containing title of work, chapter, page, and chunked content from the body of work. 
+    
+    chunk_size refers to the number of tokens to include in each chunk of text. If a given page has
+        less than the number of tokens specified, it will include text from the entire page.
+
+    overlap refers to how much to overlap the current chunk with the previous chunk. 
+    """
+    assert chunk_size <= 1024, 'The max number of tokens that the OpenAI model can handle at once is 1024.'
+    chunks = get_text_chunks(pdf_file,chunk_size,overlap=0.5) # dictionary with {chapter: '', text_chunk: '', page: ''}
+    df = chunks2df(chunks,pdf_file)
+
+def get_text_chunks(pdf_file:str,chunk_size:int,overlap:float):
+    doc = fitz.open(pdf_file)
+    chapter_text = get_chapter_text(doc,num_pages) # technically you don't have to do this, but I think it would 
+    temp_tokens = 0 # initialize the token counter
+
+    for page in range(num_pages):
+        while temp_tokens <= chunk_size:
+            page_text = doc.get_page_text(page) # get the number of tokens in the page
+            tokens = count_tokens(page_text)
+            if tokens >= 100: # there should be roughly more than a paragraph on the page for us to consider it
+                chunk_text += page_text
+
+def chunks2df(chunks,pdf_file):
+    df = pd.DataFrame(chunks)
+    df = df.insert(0,'title',pdf_file)
+    return df
+
+def count_tokens(text: str) -> int:
+    """count the number of tokens in a string"""
+    return len(tokenizer.encode(text))
 
 def create_textbook_csv_from_pdf(pdf_file):
     doc = fitz.open(pdf_file)
@@ -182,3 +221,93 @@ def fonts(doc, granularity=False):
         raise ValueError("Zero discriminating fonts found!")
 
     return font_counts, align_counts, styles
+
+def remove_elements(lst):
+    return [x for x in lst if not re.search(r"#\$%\d+#\$%", x)]
+
+class ChapterExtractor():
+    def __init__(self, pdf_file, chunk_size, overlap):
+        self.doc = fitz.open(pdf_file)
+        self.chunk_size = chunk_size
+        self.overlap = overlap
+        self.whole_text = self.get_whole_text()
+        self.chapter_pages = self.get_chapter_pages()
+        self.chapter_list = self.get_chapter_list()
+        self.chapter_text = self.get_chapter_text()
+    
+    def get_whole_text(self):
+        whole_text = ''
+        for page in range(len(self.doc)): # first put the textbook into a string separated by NEW PAGE delimiter
+            whole_text += self.doc.get_page_text(page) + f'\n\nNEW_PAGE_{page+1:04d}\n\n' # first create a large string containing all of the text in the textbook
+        return whole_text
+
+    def get_chapter_pages(self):
+        pattern = r'NEW_PAGE_(?P<page_number>\d{4})\n\nChapter (?P<chapter>\d+)\n'
+        matches = re.findall(pattern, self.whole_text)
+        return [int(x[0]) for x in matches]
+    
+    def get_chapter_list(self):
+        pattern = r'NEW_PAGE_(?P<page_number>\d{4})\n\nChapter (?P<chapter>\d+)\n'
+        matches = re.findall(pattern, self.whole_text)
+        return [int(x[1]) for x in matches]
+    
+    def get_next_chapter_page(self,chapter_page):
+        idx = np.array([x == chapter_page for x in self.chapter_pages])
+        next_idx = np.where(idx)[0][0] + 1
+        if next_idx == len(self.chapter_list):
+            next_chapter_page = len(self.doc)
+        else:
+            next_chapter_page = self.chapter_pages[next_idx]
+        return next_chapter_page
+    
+    def get_current_chapter_text(self,chapter_page):
+        chapter_text = ''
+        for page in range(chapter_page,self.get_next_chapter_page(chapter_page)):
+            chapter_text += self.doc.get_page_text(page).replace('\n',' ').replace(' ',f' #$%{page}#$% ')
+        return chapter_text      
+
+    def batch_chapter(self,current_chapter_text):
+        words_with_tags = current_chapter_text.split(' ')
+        words = remove_elements(words_with_tags)
+        num_words = len(words)
+        overlap_chunk_size = int(self.overlap * self.chunk_size) 
+        batches = {'chunk_text':[],'page':[],'tokens':[]} # Create a dictionary to store text batch data, page number, and tokens
+        if len(words) % (self.chunk_size-overlap_chunk_size) != 0:
+            # add the remaining elements to last batch
+            words.extend([""]*(self.chunk_size - (len(words) % int(2*(self.chunk_size-overlap_chunk_size)))))
+        # Create a range object to iterate over the words list
+        range_obj = range(0, len(words_with_tags), int(2*(self.chunk_size-overlap_chunk_size)))
+        # Iterate over the range object and split the words list into batches
+        for i in range_obj:
+            start = i
+            end = int(i + self.chunk_size*2) # have to multiply by two to handle the tags
+            temp = ' '.join(words_with_tags[start:end])
+            page_number = int(temp.split('#$%')[1].split('#$%')[0])
+            batch_text = ' '.join(remove_elements(temp.split(' ')))
+            tokens = len(tokenizer.encode(batch_text))
+            if tokens > 1024:
+                encodings = tokenizer.encode(batch_text)
+                truncated = encodings[0:1024]
+                batch_text = tokenizer.decode(truncated)
+                tokens = len(tokenizer.encode(batch_text))
+            batches['chunk_text'].append(batch_text)
+            batches['page'].append(page_number)
+            batches['tokens'].append(tokens)
+        return batches
+
+    def get_chapter_text(self):
+        chapter_text = {'chapter':[],'page':[],'chunk_text':[],'tokens':[]}
+        for chapter_number, chapter_page in zip(self.chapter_list, self.chapter_pages):
+            current_chapter_text = self.get_current_chapter_text(chapter_page)
+            text_batches = self.batch_chapter(current_chapter_text)
+            chapter_text['chapter'].extend([chapter_number]*len(text_batches['page']))
+            chapter_text['page'].extend(text_batches['page'])
+            chapter_text['chunk_text'].extend(text_batches['chunk_text'])
+            chapter_text['tokens'].extend(text_batches['tokens'])
+        return chapter_text
+    
+    def get_df(self):
+        return pd.DataFrame(self.chapter_text)
+
+    def get_csv(self,out_name):
+        return self.get_df().to_csv(out_name,encoding='utf-8-sig')
