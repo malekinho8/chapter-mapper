@@ -2,12 +2,27 @@ import fitz
 import pandas as pd
 import numpy as np
 import re
+import openai
+from tqdm import tqdm
 from operator import itemgetter
 from section_headers import *
 from transformers import GPT2TokenizerFast
 from nltk.tokenize import sent_tokenize
 
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+
+def batch_embed(df,batch_size,column_name:str):
+  pbar = tqdm(total=len(df))
+  df['embeddings'] = [[] for _ in range(len(df))]
+  for i in range(int(np.ceil(len(df)/batch_size))):
+      start = i * batch_size
+      end = start + batch_size
+      end = min(end, len(df))
+      model_main = openai.Embedding.create(model="text-embedding-ada-002", input=list(df[column_name][start:end]))
+      for j in range(end-start):
+          embedding_main = model_main.data[j]['embedding']
+          df.at[start + j, 'embeddings'] = embedding_main
+          pbar.update()
 
 def textbook_pdf2csv(pdf_file,chunk_size,overlap):
     """
