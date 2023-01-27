@@ -227,6 +227,7 @@ def remove_elements(lst):
 
 class ChapterExtractor():
     def __init__(self, pdf_file, chunk_size, overlap):
+        self.pdf_file = pdf_file
         self.doc = fitz.open(pdf_file)
         self.chunk_size = chunk_size
         self.overlap = overlap
@@ -296,10 +297,11 @@ class ChapterExtractor():
         return batches
 
     def get_chapter_text(self):
-        chapter_text = {'chapter':[],'page':[],'chunk_text':[],'tokens':[]}
+        chapter_text = {'title':[],'chapter':[],'page':[],'chunk_text':[],'tokens':[]}
         for chapter_number, chapter_page in zip(self.chapter_list, self.chapter_pages):
             current_chapter_text = self.get_current_chapter_text(chapter_page)
             text_batches = self.batch_chapter(current_chapter_text)
+            chapter_text['title'].extend([self.pdf_file]*len(text_batches['page']))
             chapter_text['chapter'].extend([chapter_number]*len(text_batches['page']))
             chapter_text['page'].extend(text_batches['page'])
             chapter_text['chunk_text'].extend(text_batches['chunk_text'])
