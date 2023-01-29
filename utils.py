@@ -3,13 +3,52 @@ import pandas as pd
 import numpy as np
 import re
 import openai
+import tiktoken
 from tqdm import tqdm
+from typing import List, Dict, Tuple
 from operator import itemgetter
 from section_headers import *
-from transformers import GPT2TokenizerFast
-from nltk.tokenize import sent_tokenize
+# from transformers import GPT2TokenizerFast
 
-tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+enc = tiktoken.get_encoding("gpt2")
+# tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+
+def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) -> str:
+    """
+    Fetch relevant 
+    """
+    most_relevant_document_sections = order_document_sections_by_query_similarity(question, context_embeddings)
+    
+    chosen_sections = []
+    chosen_sections_len = 0
+    chosen_sections_indexes = []
+     
+    for _, section_index in most_relevant_document_sections:
+        # Add contexts until we run out of space.        
+        document_section = df.loc[section_index]
+        
+        chosen_sections_len += document_section.tokens + separator_len
+        if chosen_sections_len > MAX_SECTION_LEN:
+            break
+            
+        chosen_sections.append(SEPARATOR + document_section.chunk_text.replace("\n", " "))
+        chosen_sections_indexes.append(str(section_index))
+            
+    # Useful diagnostic information
+    print(f"Selected {len(chosen_sections)} document sections:")
+    print("\n".join(chosen_sections_indexes))
+    
+    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know, but here is what I found:"\n\nContext:\n"""
+    
+    return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
+
+def vector_similarity(x: List[float], y: List[float]) -> float:
+    """
+    Returns the similarity between two vectors.
+    
+    Because OpenAI Embeddings are normalized to length 1, the cosine similarity is the same as the dot product.
+    """
+    return np.dot(np.array(x), np.array(y))
 
 def batch_embed(df,batch_size,column_name:str):
   pbar = tqdm(total=len(df))
@@ -260,11 +299,16 @@ class ChapterExtractor():
     def get_chapter_pages(self):
         pattern = r'NEW_PAGE_(?P<page_number>\d{4})\n\nChapter (?P<chapter>\d+)\n'
         matches = re.findall(pattern, self.whole_text)
+        if len(matches) == 0:
+            print(f'Warning: No chapters were found in the text for {self.pdf_file}. One chapter will be assumed for the whole text.')
+            matches = ['0']
         return [int(x[0]) for x in matches]
     
     def get_chapter_list(self):
         pattern = r'NEW_PAGE_(?P<page_number>\d{4})\n\nChapter (?P<chapter>\d+)\n'
         matches = re.findall(pattern, self.whole_text)
+        if len(matches) == 0:
+            matches = [('0','0')]
         return [int(x[1]) for x in matches]
     
     def get_next_chapter_page(self,chapter_page):
@@ -299,13 +343,13 @@ class ChapterExtractor():
             end = int(i + self.chunk_size*2) # have to multiply by two to handle the tags
             temp = ' '.join(words_with_tags[start:end])
             page_number = int(temp.split('#$%')[1].split('#$%')[0])
-            batch_text = ' '.join(remove_elements(temp.split(' ')))
-            tokens = len(tokenizer.encode(batch_text))
+            batch_text = ' '.join(remove_elements(temp.split(' '))).replace('- ','')
+            tokens = len(enc.encode(batch_text))
             if tokens > 1024:
-                encodings = tokenizer.encode(batch_text)
+                encodings = enc.encode(batch_text)
                 truncated = encodings[0:1024]
-                batch_text = tokenizer.decode(truncated)
-                tokens = len(tokenizer.encode(batch_text))
+                batch_text = enc.decode(truncated)
+                tokens = len(enc.encode(batch_text))
             batches['chunk_text'].append(batch_text)
             batches['page'].append(page_number)
             batches['tokens'].append(tokens)
