@@ -126,6 +126,7 @@ if not os.path.exists(f'{pdf_folder}/{file_prefix}.csv'):
     df_temp = ChapterExtractor(pdf,chunk_size,chunk_overlap).get_df()
     df_init = pd.concat([df_init,df_temp])
   df_init.to_csv(f'{pdf_folder}/{file_prefix}.csv',encoding='utf-8-sig')
+  df_init = pd.read_csv(f'{pdf_folder}/{file_prefix}.csv')
 else:
   print(f'Loading raw data from {pdf_folder}/{file_prefix}.csv...')
   df_init = pd.read_csv(f'{pdf_folder}/{file_prefix}.csv')
