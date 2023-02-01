@@ -1,7 +1,7 @@
 from utils import *
 
 # provide the textbook file PDF
-textbook_file = 'fangzhou-xia/Qiu et al. - 2023 - Disturbance Rejection Control for Active Vibration.pdf'
+textbook_file = 'dsp/thinkdsp.pdf'
 chunk_size = 256
 overlap = 0.1
 out_name = 'chunk-data '+ '[' + textbook_file.split('.pdf')[0] + ']' + '.csv'

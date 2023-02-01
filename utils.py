@@ -4,6 +4,7 @@ import numpy as np
 import re
 import openai
 import tiktoken
+from openai.embeddings_utils import get_embedding
 from tqdm import tqdm
 from typing import List, Dict, Tuple
 from operator import itemgetter
@@ -13,15 +14,54 @@ from section_headers import *
 enc = tiktoken.get_encoding("gpt2")
 # tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
-def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) -> str:
+# specify some parameters for openAI models
+MAX_SECTION_LEN = 1500
+SEPARATOR = "\n* "
+ENCODING = "cl100k_base"  # encoding for text-embedding-ada-002
+
+encoding = tiktoken.get_encoding(ENCODING)
+separator_len = len(encoding.encode(SEPARATOR))
+
+f"Context separator contains {separator_len} tokens"
+
+def vector_similarity(x: List[float], y: List[float]) -> float:
+    """
+    Returns the similarity between two vectors.
+    
+    Because OpenAI Embeddings are normalized to length 1, the cosine similarity is the same as the dot product.
+    """
+    return np.dot(np.array(x), np.array(y))
+
+def order_document_sections_by_query_similarity(query: str, df:pd.DataFrame, EMBEDDING_MODEL: str) -> List[Tuple[float, Tuple[str, str]]]:
+    """
+    Find the query embedding for the supplied query, and compare it against all of the pre-calculated document embeddings
+    to find the most relevant sections. 
+    
+    Return the list of document sections, sorted by relevance in descending order.
+    """
+    query_embedding = get_embedding(query,engine=EMBEDDING_MODEL)
+    if isinstance(df.embeddings[0],str):
+      contexts = df.embeddings.apply(eval)
+    else:
+      contexts = df.embeddings
+    
+    document_similarities = sorted([
+        (vector_similarity(query_embedding, doc_embedding), doc_index) for doc_index, doc_embedding in contexts.items()
+    ], reverse=True)
+    
+    return document_similarities
+
+def construct_prompt(question: str, df: pd.DataFrame, EMBEDDING_MODEL: str) -> str:
     """
     Fetch relevant 
     """
-    most_relevant_document_sections = order_document_sections_by_query_similarity(question, context_embeddings)
+    most_relevant_document_sections = order_document_sections_by_query_similarity(question, df, EMBEDDING_MODEL)
     
     chosen_sections = []
     chosen_sections_len = 0
     chosen_sections_indexes = []
+    chosen_sections_titles = []
+    chosen_sections_pages = []
      
     for _, section_index in most_relevant_document_sections:
         # Add contexts until we run out of space.        
@@ -33,22 +73,52 @@ def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) 
             
         chosen_sections.append(SEPARATOR + document_section.chunk_text.replace("\n", " "))
         chosen_sections_indexes.append(str(section_index))
+        chosen_sections_titles.append(document_section.title)
+        chosen_sections_pages.append(document_section.page)
             
     # Useful diagnostic information
     print(f"Selected {len(chosen_sections)} document sections:")
-    print("\n".join(chosen_sections_indexes))
+    for i in range(0,len(chosen_sections)):
+      print(f'p. {chosen_sections_pages[i]}, {chosen_sections_titles[i]}')
     
-    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know, but here is what I found:"\n\nContext:\n"""
-    
-    return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
+    header = ""
+    for i in range(0,len(chosen_sections)):
+      header += f"""From p. {chosen_sections_pages[i]}, {chosen_sections_titles[i]}: {chosen_sections[i]}\n\n """
+    header += """Based on the context provided above, try to answer the question as honestly and truthfully as possible and provide a parenthetical reference saying which page number and filename you indexed to create your answer. If the answer to the question is not contained within the context provided, reply by saying "I'm sorry, but I don't know if I can answer your question but here's a summary of what I found:" and provide a TL;DR of the most relevant context above."""
 
-def vector_similarity(x: List[float], y: List[float]) -> float:
-    """
-    Returns the similarity between two vectors.
+    return header + "\n\n Q: " + question + "\n\n A:"
+
+def answer_query_with_context(
+    query: str,
+    df: pd.DataFrame,
+    COMPLETIONS_MODEL: str,
+    EMBEDDING_MODEL: str,
+    show_prompt: bool = False,
+    temperature = 0,
+    max_tokens = 1000
+) -> str:
+    prompt = construct_prompt(
+        query,
+        df,
+        EMBEDDING_MODEL
+    )
+
+    COMPLETIONS_API_PARAMS = {
+    # We use temperature of 0.0 because it gives the most predictable, factual answer.
+    "temperature": 0,
+    "max_tokens": 1000,
+    "model": COMPLETIONS_MODEL,
+    }
     
-    Because OpenAI Embeddings are normalized to length 1, the cosine similarity is the same as the dot product.
-    """
-    return np.dot(np.array(x), np.array(y))
+    if show_prompt:
+        print(prompt)
+
+    response = openai.Completion.create(
+                prompt=prompt,
+                **COMPLETIONS_API_PARAMS
+            )
+
+    return response["choices"][0]["text"].strip(" \n")
 
 def batch_embed(df,batch_size,column_name:str):
   pbar = tqdm(total=len(df))
@@ -336,7 +406,8 @@ class ChapterExtractor():
             # add the remaining elements to last batch
             words.extend([""]*(self.chunk_size - (len(words) % int(2*(self.chunk_size-overlap_chunk_size)))))
         # Create a range object to iterate over the words list
-        range_obj = range(0, len(words_with_tags), int(2*(self.chunk_size-overlap_chunk_size)))
+        rem = len(words_with_tags) % int(2*(self.chunk_size-overlap_chunk_size))
+        range_obj = range(0, len(words_with_tags) - rem, int(2*(self.chunk_size-overlap_chunk_size)))
         # Iterate over the range object and split the words list into batches
         for i in range_obj:
             start = i
