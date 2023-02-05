@@ -79,11 +79,11 @@ def construct_prompt(question: str, df: pd.DataFrame, EMBEDDING_MODEL: str) -> s
     # Useful diagnostic information
     print(f"Selected {len(chosen_sections)} document sections:")
     for i in range(0,len(chosen_sections)):
-      print(f'p. {chosen_sections_pages[i]}, {chosen_sections_titles[i]}')
+      print(f'p. {chosen_sections_pages[i]+1}, {chosen_sections_titles[i]}')
     
     header = ""
     for i in range(0,len(chosen_sections)):
-      header += f"""From p. {chosen_sections_pages[i]}, {chosen_sections_titles[i]}: {chosen_sections[i]}\n\n """
+      header += f"""From p. {chosen_sections_pages[i]+1}, {chosen_sections_titles[i]}: {chosen_sections[i]}\n\n """
     header += """Based on the context provided above, try to answer the question as honestly and truthfully as possible and provide a parenthetical reference saying which page number and filename you indexed to create your answer. If the answer to the question is not contained within the context provided, reply by saying "I'm sorry, but I don't know if I can answer your question but here's a summary of what I found:" and provide a TL;DR of the most relevant context above."""
 
     return header + "\n\n Q: " + question + "\n\n A:"
