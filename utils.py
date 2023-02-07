@@ -362,8 +362,14 @@ class ChapterExtractor():
     
     def get_whole_text(self):
         whole_text = ''
+        warning = 0
         for page in range(len(self.doc)): # first put the textbook into a string separated by NEW PAGE delimiter
-            whole_text += self.doc.get_page_text(page) + f'\n\nNEW_PAGE_{page+1:04d}\n\n' # first create a large string containing all of the text in the textbook
+            txt_temp = self.doc.get_page_text(page)
+            whole_text += txt_temp + f'\n\nNEW_PAGE_{page+1:04d}\n\n' # first create a large string containing all of the text in the textbook
+            if txt_temp == '':
+                warning += 1
+        if warning == self.doc.page_count:
+            raise('Warning: This PDF was not able to be read using Fitz. It is possible that the document has not been uploaded yet to the Drive. Please wait a few minutes and try again.')
         return whole_text
 
     def get_chapter_pages(self):
