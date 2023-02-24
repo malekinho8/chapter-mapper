@@ -26,6 +26,11 @@ separator_len = len(encoding.encode(SEPARATOR))
 
 f"Context separator contains {separator_len} tokens"
 
+def toarray(x):
+    if isinstance(x, str):
+        x = [float(v.strip()) for v in x.strip('[').strip(']').split(',')]
+    return x
+
 def search_text(df, search_query, n, EMBEDDING_MODEL):
     embedding = get_embedding(
         search_query,
