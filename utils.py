@@ -4,7 +4,9 @@ import numpy as np
 import re
 import openai
 import tiktoken
-from openai.embeddings_utils import get_embedding
+import plotly.express as px
+import plotly.graph_objects as go
+from openai.embeddings_utils import get_embedding, cosine_similarity
 from tqdm import tqdm
 from typing import List, Dict, Tuple
 from operator import itemgetter
@@ -23,6 +25,50 @@ encoding = tiktoken.get_encoding(ENCODING)
 separator_len = len(encoding.encode(SEPARATOR))
 
 f"Context separator contains {separator_len} tokens"
+
+def search_text(df, search_query, n, EMBEDDING_MODEL):
+    embedding = get_embedding(
+        search_query,
+        engine=EMBEDDING_MODEL
+    )
+    df["similarity"] = df.embeddings.apply(lambda x: cosine_similarity(np.asarray(toarray(x), dtype='float64'), np.asarray(embedding, dtype='float64')))
+    results = list(df.sort_values("similarity", ascending=False).head(n).description)
+    return results
+
+def filter_search(df, search_results):
+    df['keep'] = [x in search_results for x in list(df.description)]
+    df = df[df['keep'] == True].filter(list(df.columns)[:-1])
+    print(df.shape)
+    return df
+
+
+def plotmap(df, search_query, number_results, dm, all_titles, pdf_folder, EMBEDDING_MODEL):
+    """
+    Plots a scatter plot of the given dataframe with optional search highlighting.
+
+    Args:
+    - df (pandas.DataFrame): the dataframe to be plotted, must contain columns 'x', 'y', 'title', 'chapter', 'page', and 'description'.
+    - search_query (str): the query to search for within the dataframe, empty string for no search highlighting.
+    - number_results (int): the maximum number of search results to highlight, only used if search_query is not empty.
+    - dm (dict): a dictionary mapping colors to title names.
+    - all_titles (list): a list of all the unique title names in the dataframe.
+    - pdf_folder (str): the name of the folder where the PDF files are located.
+
+    Returns:
+    - None.
+
+    Side Effects:
+    - Plots the scatter plot using Plotly Express and displays it in the console.
+
+    """
+    print("Searching for relevant text...")
+    search_results = list(search_text(df, search_query, number_results,EMBEDDING_MODEL))
+    df_filter = filter_search(df, search_results)
+    df_filter['size'] = 20
+    fig = px.scatter(df, x='x', y='y', color='title', hover_data=['title', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}, template="plotly_dark", title=f"{pdf_folder} Visualized")
+    fig.add_trace(px.scatter(df_filter, x='x', y='y', color='title', size='size', hover_data=['title', 'similarity', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}).data[0])
+    fig.update_layout(hoverlabel=dict(font=dict(family='Arial', size=12, color='black'),align='left'))
+    fig.show()
 
 def vector_similarity(x: List[float], y: List[float]) -> float:
     """
