@@ -40,7 +40,7 @@ def get_hsv(color_name):
 
 def feature_matrix(df):
     print("Extracting Embedding Feature Matrix...")
-    matrix = df.embeddings.to_list()
+    matrix = df['embedding-new'].to_list()
     matrix_empty = np.zeros((len(matrix), len(matrix[0])))
     for i in range(len(matrix)):
         try:
@@ -602,7 +602,7 @@ def get_batched_embeddings(df_init,pdf_folder,file_prefix,save_name_suffix,opena
 
 def evaluate_TSNE_on_df(df):
     print("Evaluating TSNE on Dataset...")
-    df['embedding-new'] = df.embeddings.apply(np.array)
+    df['embedding-new'] = df.embeddings.apply(eval)
     tsne = TSNE(n_components=2, perplexity=15, random_state=42, init='random', learning_rate=200)
     matrix = feature_matrix(df)
     vis_dims = tsne.fit_transform(matrix)
