@@ -2,16 +2,23 @@ import fitz
 import pandas as pd
 import numpy as np
 import re
+import os
 import openai
+import colorsys
 import tiktoken
 import plotly.express as px
 import plotly.graph_objects as go
+import textwrap
+from sklearn.manifold import TSNE
+from matplotlib import colors as mcolors
 from openai.embeddings_utils import get_embedding, cosine_similarity
 from tqdm import tqdm
 from typing import List, Dict, Tuple
 from operator import itemgetter
 from section_headers import *
 # from transformers import GPT2TokenizerFast
+
+openai.api_key = "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"
 
 enc = tiktoken.get_encoding("gpt2")
 # tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
@@ -25,6 +32,27 @@ encoding = tiktoken.get_encoding(ENCODING)
 separator_len = len(encoding.encode(SEPARATOR))
 
 f"Context separator contains {separator_len} tokens"
+
+def get_hsv(color_name):
+    css4_colors = mcolors.CSS4_COLORS
+    hexrgb = css4_colors[color_name]
+    hexrgb = hexrgb.lstrip("#")   # in case you have Web color specs
+    r, g, b = (int(hexrgb[i:i+2], 16) / 255.0 for i in range(0,5,2))
+    return colorsys.rgb_to_hsv(r, g, b)
+
+def feature_matrix(df):
+    print("Extracting Embedding Feature Matrix...")
+    matrix = df.embeddings.to_list()
+    matrix_empty = np.zeros((len(matrix), len(matrix[0])))
+    for i in range(len(matrix)):
+        try:
+            matrix_empty[i, :] = np.array(matrix[i])
+        except Exception as e:
+            print(i, e)
+            print(matrix[i])
+            exit()
+    matrix = matrix_empty
+    return matrix
 
 def toarray(x):
     if isinstance(x, str):
@@ -173,16 +201,18 @@ def answer_query_with_context(
 
 def batch_embed(df,batch_size,column_name:str):
   pbar = tqdm(total=len(df))
+  df = df.reset_index(drop=True)
   df['embeddings'] = [[] for _ in range(len(df))]
   for i in range(int(np.ceil(len(df)/batch_size))):
       start = i * batch_size
       end = start + batch_size
       end = min(end, len(df))
-      model_main = openai.Embedding.create(model="text-embedding-ada-002", input=list(df[column_name][start:end]))
+      model_main = openai.Embedding.create(model="text-embedding-ada-002", input=list(df[column_name].iloc[start:end]))
       for j in range(end-start):
           embedding_main = model_main.data[j]['embedding']
           df.at[start + j, 'embeddings'] = embedding_main
           pbar.update()
+  return df
 
 def textbook_pdf2csv(pdf_file,chunk_size,overlap):
     """
@@ -500,3 +530,99 @@ class ChapterExtractor():
 
     def get_csv(self,out_name):
         return self.get_df().to_csv(out_name,encoding='utf-8-sig')
+
+def collect_pdf_folder_data(pdf_folder,chunk_size,chunk_overlap):
+    """
+    Collects data from a folder of PDF files by extracting chapter data from each PDF file and combining it into a single Pandas DataFrame.
+
+    Args:
+    - pdf_folder (str): The path to the folder containing the PDF files.
+    - chunk_size (int): The size of the chunks to be extracted from each chapter.
+    - chunk_overlap (float): The amount of overlap between each chunk, as a fraction of the chunk size.
+
+    Returns:
+    - df_init (Pandas DataFrame): A Pandas DataFrame containing the extracted chapter data.
+
+    Raises:
+    - None.
+
+    Example usage:
+    ```
+    pdf_folder = 'path/to/folder'
+    chunk_size = 256
+    chunk_overlap = 0.4
+    df = collect_pdf_folder_data(pd, pdf_folder, chunk_size, chunk_overlap)
+    ```
+    """
+    df_init = pd.DataFrame()
+    pdfs = np.unique([os.path.join(pdf_folder,x) for x in os.listdir(pdf_folder) if '.pdf' in x]).tolist()
+    cs = int(chunk_size)
+    file_prefix = pdf_folder + f'-cs={cs}-co={chunk_overlap:.2f}-raw-data' 
+    if not os.path.exists(f'{pdf_folder}/{file_prefix}.csv'):
+        for pdf in pdfs:
+            print(len(df_init))
+            df_temp = ChapterExtractor(pdf,chunk_size,chunk_overlap).get_df()
+            df_init = pd.concat([df_init,df_temp])
+        df_init.to_csv(f'{pdf_folder}/{file_prefix}.csv',encoding='utf-8-sig')
+        df_init = pd.read_csv(f'{pdf_folder}/{file_prefix}.csv')
+    else:
+        print(f'Loading raw data from {pdf_folder}/{file_prefix}.csv...')
+        df_init = pd.read_csv(f'{pdf_folder}/{file_prefix}.csv')
+        extra_pdfs = [x for x in pdfs if x not in np.unique(df_init.title).tolist()]
+        if len(extra_pdfs) > 0: # if there are extra pdf's that have been added to the folder...
+            for pdf in extra_pdfs:
+                print(len(df_init))
+                df_temp = ChapterExtractor(pdf,chunk_size,chunk_overlap).get_df()
+                df_init = pd.concat([df_init,df_temp])
+        df_init.to_csv(f'{pdf_folder}/{file_prefix}.csv',encoding='utf-8-sig')
+        df_init = pd.read_csv(f'{pdf_folder}/{file_prefix}.csv')
+    
+    return df_init, file_prefix
+
+def get_batched_embeddings(df_init,pdf_folder,file_prefix,save_name_suffix):
+    if not os.path.exists(f'{pdf_folder}/{file_prefix}-{save_name_suffix}.csv'):
+        df_init = batch_embed(df_init, 200,'chunk_text') # adds embedding column to the textbook data file
+        df_init.to_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}.csv',encoding='utf-8-sig')
+        return df_init
+    else:
+        df = pd.read_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}.csv')
+        load_names = np.unique(df.title).tolist()
+        all_names = np.unique(df_init.title).tolist()
+        extra_pdfs = [x for x in all_names if x not in load_names]
+        if len(extra_pdfs) > 0:
+            df0 = pd.DataFrame()
+            for pdf in extra_pdfs:
+                df_temp = df_init[df_init['title'] == pdf]
+                df0 = pd.concat([df0,df_temp])
+            df0 = batch_embed(df0,200,'chunk_text')
+            df_init = pd.concat([df,df0])
+            df_init.to_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}.csv',encoding='utf-8-sig')
+            
+            return df_init
+        else:
+            return df
+
+def get_tsne_plot_params(df_init,pdf_folder,file_prefix,save_name_suffix,):
+    df = df_init
+    css4_colors = mcolors.CSS4_COLORS
+    all_titles = list(df.title.unique())
+    colors = list(css4_colors.keys())
+    colors = np.random.choice(colors, len(all_titles), False)
+    colors = sorted(colors, key=get_hsv)
+    df['color'] = [css4_colors[colors[all_titles.index(i)]] for i in list(df.title)]
+    dm = {all_titles[i]: colors[i] for i in range(len(all_titles))}
+
+    if not os.path.exists(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv'):
+        df['embedding-new'] = df.embeddings.apply(np.array)
+        print("Evaluating TSNE on Dataset...")
+        tsne = TSNE(n_components=2, perplexity=15, random_state=42, init='random', learning_rate=200)
+        matrix = feature_matrix(df)
+        vis_dims = tsne.fit_transform(matrix)
+        df['x'] = [x for x,y in vis_dims]
+        df['y'] = [y for x,y in vis_dims]
+        df['description']  = ["<br>".join(textwrap.wrap(d)) for d in list(df.chunk_text)]
+        df.to_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv')
+    else:
+        df = pd.read_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv')
+        
+        df['description']  = ["<br>".join(textwrap.wrap(d)) for d in list(df.chunk_text)]
