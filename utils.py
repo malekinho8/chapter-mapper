@@ -600,6 +600,18 @@ def get_batched_embeddings(df_init,pdf_folder,file_prefix,save_name_suffix,opena
         else:
             return df
 
+def evaluate_TSNE_on_df(df):
+    print("Evaluating TSNE on Dataset...")
+    df['embedding-new'] = df.embeddings.apply(np.array)
+    tsne = TSNE(n_components=2, perplexity=15, random_state=42, init='random', learning_rate=200)
+    matrix = feature_matrix(df)
+    vis_dims = tsne.fit_transform(matrix)
+    df['x'] = [x for x,y in vis_dims]
+    df['y'] = [y for x,y in vis_dims]
+    df['description']  = ["<br>".join(textwrap.wrap(d)) for d in list(df.chunk_text)]
+    return df
+
+
 def get_tsne_plot_params(df_init,pdf_folder,file_prefix,save_name_suffix,):
     df = df_init
     css4_colors = mcolors.CSS4_COLORS
@@ -611,16 +623,22 @@ def get_tsne_plot_params(df_init,pdf_folder,file_prefix,save_name_suffix,):
     dm = {all_titles[i]: colors[i] for i in range(len(all_titles))}
 
     if not os.path.exists(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv'):
-        df['embedding-new'] = df.embeddings.apply(np.array)
-        print("Evaluating TSNE on Dataset...")
-        tsne = TSNE(n_components=2, perplexity=15, random_state=42, init='random', learning_rate=200)
-        matrix = feature_matrix(df)
-        vis_dims = tsne.fit_transform(matrix)
-        df['x'] = [x for x,y in vis_dims]
-        df['y'] = [y for x,y in vis_dims]
-        df['description']  = ["<br>".join(textwrap.wrap(d)) for d in list(df.chunk_text)]
+        df = evaluate_TSNE_on_df(df,pdf_folder,file_prefix,save_name_suffix)
         df.to_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv')
     else:
+        all_names = np.unique(df_init.title).tolist()
         df = pd.read_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv')
-        
+        current_names = np.unique(df.title).tolist()
+        extra_names = [x for x in all_names if x not in current_names]
+        if len(extra_names) > 0:
+            df0 = pd.DataFrame()
+            for name in extra_names:
+                df_temp = df_init[df_init.title == name]
+                df0 = pd.concat([df0,df_temp])
+            df0 = df0.reset_index(drop=True)
+            df0 = evaluate_TSNE_on_df(df0)
+            df = pd.concat([df,df0])
+            df.to_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv')
         df['description']  = ["<br>".join(textwrap.wrap(d)) for d in list(df.chunk_text)]
+    
+    return df, dm, all_titles
