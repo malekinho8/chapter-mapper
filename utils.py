@@ -18,8 +18,6 @@ from operator import itemgetter
 from section_headers import *
 # from transformers import GPT2TokenizerFast
 
-openai.api_key = "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"
-
 enc = tiktoken.get_encoding("gpt2")
 # tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
@@ -199,7 +197,7 @@ def answer_query_with_context(
 
     return response["choices"][0]["text"].strip(" \n")
 
-def batch_embed(df,batch_size,column_name:str):
+def batch_embed(df,batch_size,column_name:str,openai_api_key):
   pbar = tqdm(total=len(df))
   df = df.reset_index(drop=True)
   df['embeddings'] = [[] for _ in range(len(df))]
@@ -579,9 +577,9 @@ def collect_pdf_folder_data(pdf_folder,chunk_size,chunk_overlap):
     
     return df_init, file_prefix
 
-def get_batched_embeddings(df_init,pdf_folder,file_prefix,save_name_suffix):
+def get_batched_embeddings(df_init,pdf_folder,file_prefix,save_name_suffix,openai_api_key):
     if not os.path.exists(f'{pdf_folder}/{file_prefix}-{save_name_suffix}.csv'):
-        df_init = batch_embed(df_init, 200,'chunk_text') # adds embedding column to the textbook data file
+        df_init = batch_embed(df_init, 200,'chunk_text',openai_api_key) # adds embedding column to the textbook data file
         df_init.to_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}.csv',encoding='utf-8-sig')
         return df_init
     else:
@@ -594,7 +592,7 @@ def get_batched_embeddings(df_init,pdf_folder,file_prefix,save_name_suffix):
             for pdf in extra_pdfs:
                 df_temp = df_init[df_init['title'] == pdf]
                 df0 = pd.concat([df0,df_temp])
-            df0 = batch_embed(df0,200,'chunk_text')
+            df0 = batch_embed(df0,200,'chunk_text',openai_api_key)
             df_init = pd.concat([df,df0])
             df_init.to_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}.csv',encoding='utf-8-sig')
             
