@@ -117,6 +117,7 @@ def order_document_sections_by_query_similarity(query: str, df:pd.DataFrame, EMB
     Return the list of document sections, sorted by relevance in descending order.
     """
     query_embedding = get_embedding(query,engine=EMBEDDING_MODEL)
+    # contexts = lambda df: (df.embeddings.apply(lambda val: eval(val) if isinstance(val, str) else val) if any(isinstance(val, str) for val in df.embeddings) else df.embeddings) 
     if any(isinstance(val, str) for val in df.embeddings):
       print('Converting string embeddgings to a list of floats...')
       contexts = df.embeddings.apply(eval)
@@ -627,7 +628,7 @@ def get_tsne_plot_params(df_init,pdf_folder,file_prefix,save_name_suffix,):
     dm = {all_titles[i]: colors[i] for i in range(len(all_titles))}
 
     if not os.path.exists(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv'):
-        df = evaluate_TSNE_on_df(df,pdf_folder,file_prefix,save_name_suffix)
+        df = evaluate_TSNE_on_df(df)
         df.to_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv')
     else:
         all_names = np.unique(df_init.title).tolist()
