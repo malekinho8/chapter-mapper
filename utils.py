@@ -117,7 +117,8 @@ def order_document_sections_by_query_similarity(query: str, df:pd.DataFrame, EMB
     Return the list of document sections, sorted by relevance in descending order.
     """
     query_embedding = get_embedding(query,engine=EMBEDDING_MODEL)
-    if isinstance(df.embeddings[0],str):
+    if any(isinstance(val, str) for val in df.embeddings):
+      print('Converting string embeddgings to a list of floats...')
       contexts = df.embeddings.apply(eval)
     else:
       contexts = df.embeddings
@@ -602,7 +603,10 @@ def get_batched_embeddings(df_init,pdf_folder,file_prefix,save_name_suffix,opena
 
 def evaluate_TSNE_on_df(df):
     print("Evaluating TSNE on Dataset...")
-    df['embedding-new'] = df.embeddings.apply(eval)
+    if isinstance(df.embeddings[0],str):
+      df['embedding-new'] = df.embeddings.apply(eval)
+    else:
+      df['embedding-new'] = df.embeddings
     tsne = TSNE(n_components=2, perplexity=15, random_state=42, init='random', learning_rate=200)
     matrix = feature_matrix(df)
     vis_dims = tsne.fit_transform(matrix)
