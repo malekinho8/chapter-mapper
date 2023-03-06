@@ -9,6 +9,7 @@ import tiktoken
 import plotly.express as px
 import plotly.graph_objects as go
 import textwrap
+import nbformat
 from sklearn.manifold import TSNE
 from matplotlib import colors as mcolors
 from openai.embeddings_utils import get_embedding, cosine_similarity
@@ -16,6 +17,7 @@ from tqdm import tqdm
 from typing import List, Dict, Tuple
 from operator import itemgetter
 from section_headers import *
+from fpdf import FPDF
 # from transformers import GPT2TokenizerFast
 
 enc = tiktoken.get_encoding("gpt2")
@@ -118,11 +120,8 @@ def order_document_sections_by_query_similarity(query: str, df:pd.DataFrame, EMB
     """
     query_embedding = get_embedding(query,engine=EMBEDDING_MODEL)
     # contexts = lambda df: (df.embeddings.apply(lambda val: eval(val) if isinstance(val, str) else val) if any(isinstance(val, str) for val in df.embeddings) else df.embeddings) 
-    if any(isinstance(val, str) for val in df.embeddings):
-      print('Converting string embeddgings to a list of floats...')
-      contexts = df.embeddings.apply(eval)
-    else:
-      contexts = df.embeddings
+    print('Converting string embeddings to a list of floats...')
+    contexts = contexts = df.embeddings.apply(lambda x: [float(num) for num in x.strip('[]').split(',')] if isinstance(x, str) else x)
     
     document_similarities = sorted([
         (vector_similarity(query_embedding, doc_embedding), doc_index) for doc_index, doc_embedding in contexts.items()
@@ -163,7 +162,13 @@ def construct_prompt(question: str, df: pd.DataFrame, EMBEDDING_MODEL: str) -> s
     header = ""
     for i in range(0,len(chosen_sections)):
       header += f"""From p. {chosen_sections_pages[i]+1}, {chosen_sections_titles[i]}: {chosen_sections[i]}\n\n """
-    header += """Based on the context provided above, try to answer the question as honestly and truthfully as possible and provide a parenthetical reference saying which page number and filename you indexed to create your answer. If the answer to the question is not contained within the context provided, reply by saying "I'm sorry, but I don't know if I can answer your question but here's a summary of what I found:" and provide a TL;DR of the most relevant context above."""
+    # header += """Based on the context provided above, try to answer the question as honestly and truthfully as possible and provide a parenthetical reference saying which page number and filename you indexed to create your answer. If the answer to the question is not contained within the context provided, reply by saying "I'm sorry, but I don't know if I can answer your question but here's a summary of what I found:" and provide a TL;DR of the most relevant context above."""
+    header += """First provide a one-line citation of the most relevant text to the question taken from the context above. Then, try to answer the question as honestly and truthfully as possible and provide a parenthetical reference saying which page number and filename you indexed to create your answer. If the answer to the question is not contained within the context provided, reply by saying "I'm sorry, but I don't know if I can answer your question but here's a summary of what I found:" and provide a TL;DR of the most relevant context above."""
+    # header += """
+    #     Answer the question as honestly and truthfully as possible based on the context above.
+    #     Provide your answer in the form of a table with a column containing the most relevant text excerpts from each of the sources above, and another column for your answer to the question based on that specific context.
+    #     Then, if applicable, provide a 2-3 sentence summary of the results in the table.
+    # """
 
     return header + "\n\n Q: " + question + "\n\n A:"
 
@@ -433,6 +438,7 @@ def remove_elements(lst):
 class ChapterExtractor():
     def __init__(self, pdf_file, chunk_size, overlap):
         self.pdf_file = pdf_file
+        self.tag = self.pdf_file.split(os.sep)[-1][0:100] # limit tag to 100 characters
         self.doc = fitz.open(pdf_file)
         self.chunk_size = chunk_size
         self.overlap = overlap
@@ -446,11 +452,11 @@ class ChapterExtractor():
         warning = 0
         for page in range(len(self.doc)): # first put the textbook into a string separated by NEW PAGE delimiter
             txt_temp = self.doc.get_page_text(page)
-            whole_text += txt_temp + f'\n\nNEW_PAGE_{page+1:04d}\n\n' # first create a large string containing all of the text in the textbook
+            whole_text += f'({self.tag}) ' + txt_temp + f'\n\nNEW_PAGE_{page+1:04d}\n\n' # first create a large string containing all of the text in the textbook
             if txt_temp == '':
                 warning += 1
         if warning == self.doc.page_count:
-            raise('Warning: This PDF was not able to be read using Fitz. It is possible that the document has not been uploaded yet to the Drive. Please wait a few minutes and try again.')
+            print(f'\n\nWARNING: {self.pdf_file} was not able to be read using Fitz. It is possible that the file is corrupted, but you may also try waiting a few minutes and trying again as it may not be fully uploaded to Google Drive.\n\n')
         return whole_text
 
     def get_chapter_pages(self):
@@ -531,6 +537,85 @@ class ChapterExtractor():
     def get_csv(self,out_name):
         return self.get_df().to_csv(out_name,encoding='utf-8-sig')
 
+def convert_ipynb_to_py(ipynb_path):
+    py_path = os.path.splitext(ipynb_path)[0] + '.py'
+    nb = nbformat.read(ipynb_path, nbformat.NO_CONVERT)
+    with open(py_path, 'w') as py_file:
+        for cell in nb.cells:
+            if cell.cell_type == 'code':
+                py_file.write(cell.source + '\n')
+            elif cell.cell_type == 'markdown':
+                py_file.write('# ' + cell.source.replace('\n', '\n# ') + '\n')
+    return py_path
+    
+def convert_py_to_txt(py_path):
+    txt_path = os.path.splitext(py_path)[0] + '.txt'
+    with open(py_path, 'r') as py_file, open(txt_path, 'w') as txt_file:
+        txt_file.write(py_file.read())
+    return txt_path
+
+def convert_txt_to_pdf(txt_path):
+    a4_width_mm = 210
+    pt_to_mm = 0.35
+    fontsize_pt = 10
+    fontsize_mm = fontsize_pt * pt_to_mm
+    margin_bottom_mm = 10
+    character_width_mm = 7 * pt_to_mm
+    width_text = int(a4_width_mm / character_width_mm)
+
+    with open(txt_path, 'r', encoding='latin') as f:
+        text = f.read()
+
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
+    pdf.set_auto_page_break(True, margin=margin_bottom_mm)
+    pdf.add_page()
+    pdf.set_font(family='Courier', size=fontsize_pt)
+    splitted = text.split('\n')
+
+    for line in splitted:
+        lines = textwrap.wrap(line, width_text)
+
+        if len(lines) == 0:
+            pdf.ln()
+
+        for wrap in lines:
+            pdf.cell(0, fontsize_mm, wrap, ln=1)
+
+    pdf_path = os.path.splitext(txt_path)[0] + '.pdf'
+    pdf.output(pdf_path, 'F')
+    return pdf_path
+
+def convert_ipynb_to_pdf(ipynb_path):
+    py_path = convert_ipynb_to_py(ipynb_path)
+    txt_path = convert_py_to_txt(py_path)
+    pdf_path = convert_txt_to_pdf(txt_path)
+    os.remove(py_path)
+    os.remove(txt_path)
+    return pdf_path
+
+def convert_py_to_pdf(py_path):
+    txt_path = convert_py_to_txt(py_path)
+    pdf_path = convert_txt_to_pdf(txt_path)
+    os.remove(txt_path)
+    return pdf_path
+
+def get_pdfs_from_folder(pdf_folder):
+    out = []
+    for x in os.listdir(pdf_folder):
+        path_temp = os.path.join(pdf_folder,x)
+        if path_temp.endswith('.pdf'):
+            pdf_path = path_temp
+        elif path_temp.endswith('.ipynb'):
+            pdf_path = convert_ipynb_to_pdf(path_temp)
+        elif path_temp.endswith('.py'):
+            pdf_path = convert_py_to_pdf(path_temp)
+        else:
+            print(f"\n\nWarning: {path_temp} is not a supported file type! Consider adding functionality to convert this file type to pdf form...\n\n")
+        
+        if pdf_path not in out:
+            out.append(pdf_path)
+    return out
+
 def collect_pdf_folder_data(pdf_folder,chunk_size,chunk_overlap):
     """
     Collects data from a folder of PDF files by extracting chapter data from each PDF file and combining it into a single Pandas DataFrame.
@@ -555,9 +640,10 @@ def collect_pdf_folder_data(pdf_folder,chunk_size,chunk_overlap):
     ```
     """
     df_init = pd.DataFrame()
-    pdfs = np.unique([os.path.join(pdf_folder,x) for x in os.listdir(pdf_folder) if '.pdf' in x]).tolist()
+    pdfs = get_pdfs_from_folder(pdf_folder)
+    # pdfs = np.unique([os.path.join(pdf_folder,x) for x in os.listdir(pdf_folder) if '.pdf' in x]).tolist()
     cs = int(chunk_size)
-    file_prefix = pdf_folder + f'-cs={cs}-co={chunk_overlap:.2f}-raw-data' 
+    file_prefix = pdf_folder.split(os.sep)[-1] + f'-cs={cs}-co={chunk_overlap:.2f}-raw-data' 
     if not os.path.exists(f'{pdf_folder}/{file_prefix}.csv'):
         for pdf in pdfs:
             print(len(df_init))
