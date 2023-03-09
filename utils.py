@@ -197,12 +197,12 @@ def answer_query_with_context(
     if show_prompt:
         print(prompt)
 
-    response = openai.Completion.create(
-                prompt=prompt,
+    response = openai.ChatCompletion.create(
+                messages = [{"role": "user", "content": prompt}],
                 **COMPLETIONS_API_PARAMS
             )
 
-    return response["choices"][0]["text"].strip(" \n")
+    return response['choices'][0]['message']['content']
 
 def batch_embed(df,batch_size,column_name:str,openai_api_key):
   pbar = tqdm(total=len(df))
