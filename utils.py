@@ -548,10 +548,10 @@ def convert_ipynb_to_py(ipynb_path):
                 py_file.write('# ' + cell.source.replace('\n', '\n# ') + '\n')
     return py_path
     
-def convert_py_to_txt(py_path):
-    txt_path = os.path.splitext(py_path)[0] + '.txt'
-    with open(py_path, 'r') as py_file, open(txt_path, 'w') as txt_file:
-        txt_file.write(py_file.read())
+def convert_code_to_txt(code_path):
+    txt_path = os.path.splitext(code_path)[0] + '.txt'
+    with open(code_path, 'r') as file, open(txt_path, 'w') as txt_file:
+        txt_file.write(file.read())
     return txt_path
 
 def convert_txt_to_pdf(txt_path):
@@ -722,14 +722,7 @@ def get_tsne_plot_params(df_init,pdf_folder,file_prefix,save_name_suffix,):
         current_names = np.unique(df.title).tolist()
         extra_names = [x for x in all_names if x not in current_names]
         if len(extra_names) > 0:
-            df0 = pd.DataFrame()
-            for name in extra_names:
-                df_temp = df_init[df_init.title == name]
-                df0 = pd.concat([df0,df_temp])
-            df0 = df0.reset_index(drop=True)
-            df0 = evaluate_TSNE_on_df(df0)
-            df = pd.concat([df,df0])
+            df = evaluate_TSNE_on_df(df_init)
             df.to_csv(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv')
         df['description']  = ["<br>".join(textwrap.wrap(d)) for d in list(df.chunk_text)]
-    
     return df, dm, all_titles
