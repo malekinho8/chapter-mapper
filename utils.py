@@ -163,7 +163,7 @@ def construct_prompt(question: str, df: pd.DataFrame, EMBEDDING_MODEL: str) -> s
     for i in range(0,len(chosen_sections)):
       header += f"""From p. {chosen_sections_pages[i]+1}, {chosen_sections_titles[i]}: {chosen_sections[i]}\n\n """
     # header += """Based on the context provided above, try to answer the question as honestly and truthfully as possible and provide a parenthetical reference saying which page number and filename you indexed to create your answer. If the answer to the question is not contained within the context provided, reply by saying "I'm sorry, but I don't know if I can answer your question but here's a summary of what I found:" and provide a TL;DR of the most relevant context above."""
-    header += """First provide a full one-line citation including the page number and filename of the most relevant text to the question taken from the context above. Then, try to answer the question as honestly and truthfully as possible and provide a parenthetical reference saying which page number and filename you indexed to create your answer. If the answer to the question is not contained within the context provided, reply by saying "I'm sorry, but I don't know if I can answer your question but here's a summary of what I found:" and provide a TL;DR of the most relevant context above."""
+    header += """First provide a citation containing the page numbers and filenames of the most relevant texts you used to answer the question from the context above. Then, try to answer the question as honestly and truthfully as possible and provide a parenthetical reference saying which page number and filename you indexed to create your answer. If the answer to the question is not contained within the context provided, reply by saying "I'm sorry, but I don't know if I can answer your question but here's a summary of what I found:" and provide a TL;DR of the most relevant context above. Note that in each text chunk, the notation ' [ref: file_name_here] ' indicates which file the text comes from."""
     # header += """
     #     Answer the question as honestly and truthfully as possible based on the context above.
     #     Provide your answer in the form of a table with a column containing the most relevant text excerpts from each of the sources above, and another column for your answer to the question based on that specific context.
@@ -438,7 +438,7 @@ def remove_elements(lst):
 class ChapterExtractor():
     def __init__(self, pdf_file, chunk_size, overlap):
         self.pdf_file = pdf_file
-        self.tag = self.pdf_file.split(os.sep)[-1][0:100] # limit tag to 100 characters
+        self.tag = self.pdf_file.split(os.sep)[-1][0:100].replace('_',' ').replace('-',' ').replace('.pdf','') # limit tag to 100 characters, replace underscores and dashes with spaces
         self.doc = fitz.open(pdf_file)
         self.chunk_size = chunk_size
         self.overlap = overlap
@@ -452,7 +452,7 @@ class ChapterExtractor():
         warning = 0
         for page in range(len(self.doc)): # first put the textbook into a string separated by NEW PAGE delimiter
             txt_temp = self.doc.get_page_text(page)
-            whole_text += f'({self.tag}) ' + txt_temp + f'\n\nNEW_PAGE_{page+1:04d}\n\n' # first create a large string containing all of the text in the textbook
+            whole_text += f' ({self.tag}) ' + txt_temp + f'\n\nNEW_PAGE_{page+1:04d}\n\n' # first create a large string containing all of the text in the textbook
             if txt_temp == '':
                 warning += 1
         if warning == self.doc.page_count:
@@ -486,7 +486,7 @@ class ChapterExtractor():
     def get_current_chapter_text(self,chapter_page):
         chapter_text = ''
         for page in range(chapter_page,self.get_next_chapter_page(chapter_page)):
-            chapter_text += self.doc.get_page_text(page).replace('\n',' ').replace(' ',f' #$%{page}#$% ')
+            chapter_text += f' [ref: {self.tag}] ' + self.doc.get_page_text(page).replace('\n',' ').replace(' ',f' #$%{page}#$% ')
         return chapter_text      
 
     def batch_chapter(self,current_chapter_text):
@@ -587,14 +587,14 @@ def convert_txt_to_pdf(txt_path):
 
 def convert_ipynb_to_pdf(ipynb_path):
     py_path = convert_ipynb_to_py(ipynb_path)
-    txt_path = convert_py_to_txt(py_path)
+    txt_path = convert_code_to_txt(py_path)
     pdf_path = convert_txt_to_pdf(txt_path)
     os.remove(py_path)
     os.remove(txt_path)
     return pdf_path
 
-def convert_py_to_pdf(py_path):
-    txt_path = convert_py_to_txt(py_path)
+def convert_code_to_pdf(py_path):
+    txt_path = convert_code_to_txt(py_path)
     pdf_path = convert_txt_to_pdf(txt_path)
     os.remove(txt_path)
     return pdf_path
@@ -608,7 +608,9 @@ def get_pdfs_from_folder(pdf_folder):
         elif path_temp.endswith('.ipynb'):
             pdf_path = convert_ipynb_to_pdf(path_temp)
         elif path_temp.endswith('.py'):
-            pdf_path = convert_py_to_pdf(path_temp)
+            pdf_path = convert_code_to_pdf(path_temp)
+        elif path_temp.endswith('.cpp'):
+            pdf_path = convert_code_to_pdf(path_temp)
         else:
             print(f"\n\nWarning: {path_temp} is not a supported file type! Consider adding functionality to convert this file type to pdf form...\n\n")
         
