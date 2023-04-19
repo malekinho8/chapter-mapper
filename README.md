@@ -6,7 +6,7 @@ This is a simple package for mapping PDF files and finding answers to your quest
 
 ## Getting Started
 
-To get started using the code as quickly as possible, you may make a copy of this [Google Colab Notebook](https://drive.google.com/file/d/1PeYb9Kczs9nyGlgZIxhKjcsLVMGzhkvp/view?usp=sharing) to your own Google Drive. Continue to follow the INSTRUCTIONS.md for more details. 
+To get started using the code as quickly as possible, you may make a copy of this [Google Colab Notebook](https://drive.google.com/file/d/1PeYb9Kczs9nyGlgZIxhKjcsLVMGzhkvp/view?usp=sharing) to your own Google Drive. Continue to follow the [INSTRUCTIONS.md](https://github.com/malekinho8/chapter-mapper/blob/main/INSTRUCTIONS.md) for more details. 
 
 ## Usage
 
