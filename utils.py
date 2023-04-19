@@ -103,6 +103,8 @@ def plotmap(df, search_query, number_results, dm, all_titles, pdf_folder, EMBEDD
     fig.update_layout(hoverlabel=dict(font=dict(family='Arial', size=12, color='black'),align='left'))
     fig.show()
 
+    return fig
+
 def vector_similarity(x: List[float], y: List[float]) -> float:
     """
     Returns the similarity between two vectors.
