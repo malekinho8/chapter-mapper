@@ -1,0 +1,28 @@
+# ignore all files ending with pdf, csv
+*.pdf
+*.csv
+*.html
+
+# ignore everything in pdf folders
+4453/*
+212-lab4/*
+bioprinting/*
+bond-graphs/*
+dsp/*
+ehs-mit/*
+fangzhou-xia/*
+feedback-control/*
+gass/*
+hicham-hamoudi/*
+labview/*
+profiles/*
+robotics-2.121/*
+test/*
+unit-tests/*
+xia-afm-book/*
+
+
+
+
+
+
