@@ -33,6 +33,13 @@ separator_len = len(encoding.encode(SEPARATOR))
 
 f"Context separator contains {separator_len} tokens"
 
+def find_folder_path(folder_name, root_path):
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        for dirname in dirnames:
+            if dirname == folder_name:
+                return os.path.join(dirpath, dirname)
+    return None
+
 def get_hsv(color_name):
     css4_colors = mcolors.CSS4_COLORS
     hexrgb = css4_colors[color_name]
@@ -75,7 +82,7 @@ def filter_search(df, search_results):
     return df
 
 
-def plotmap(df, search_query, number_results, dm, all_titles, pdf_folder, EMBEDDING_MODEL):
+def plotmap(df, search_query, number_results, dm, all_titles, pdf_folder, EMBEDDING_MODEL, folder_label=False):
     """
     Plots a scatter plot of the given dataframe with optional search highlighting.
 
@@ -98,8 +105,14 @@ def plotmap(df, search_query, number_results, dm, all_titles, pdf_folder, EMBEDD
     search_results = list(search_text(df, search_query, number_results,EMBEDDING_MODEL))
     df_filter = filter_search(df, search_results)
     df_filter['size'] = 20
-    fig = px.scatter(df, x='x', y='y', color='title', hover_data=['title', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}, template="plotly_dark", title=f"{pdf_folder} Visualized")
-    fig.add_trace(px.scatter(df_filter, x='x', y='y', color='title', size='size', hover_data=['title', 'similarity', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}).data[0])
+    if not folder_label:
+        fig = px.scatter(df, x='x', y='y', color='title', hover_data=['title', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}, template="plotly_dark", title=f"{pdf_folder} Visualized")
+        fig.add_trace(px.scatter(df_filter, x='x', y='y', color='title', size='size', hover_data=['title', 'similarity', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}).data[0])
+    else:
+        df['folder'] = df.title.apply(lambda x: x.split(os.sep)[-2]) 
+        df_filter['folder'] = df_filter.title.apply(lambda x: x.split(os.sep)[-2])
+        fig = px.scatter(df, x='x', y='y', color='folder', hover_data=['title', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}, template="plotly_dark", title=f"{pdf_folder} Visualized")
+        fig.add_trace(px.scatter(df_filter, x='x', y='y', color='folder', size='size', hover_data=['title', 'similarity', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}).data[0])
     fig.update_layout(hoverlabel=dict(font=dict(family='Arial', size=12, color='black'),align='left'))
     fig.show()
 
@@ -603,21 +616,23 @@ def convert_code_to_pdf(py_path):
 
 def get_pdfs_from_folder(pdf_folder):
     out = []
-    for x in os.listdir(pdf_folder):
-        path_temp = os.path.join(pdf_folder,x)
-        if path_temp.endswith('.pdf'):
-            pdf_path = path_temp
-        elif path_temp.endswith('.ipynb'):
-            pdf_path = convert_ipynb_to_pdf(path_temp)
-        elif path_temp.endswith('.py'):
-            pdf_path = convert_code_to_pdf(path_temp)
-        elif path_temp.endswith('.cpp'):
-            pdf_path = convert_code_to_pdf(path_temp)
-        else:
-            print(f"\n\nWarning: {path_temp} is not a supported file type! Consider adding functionality to convert this file type to pdf form...\n\n")
-        
-        if pdf_path not in out:
-            out.append(pdf_path)
+    for root, dirs, files in os.walk(pdf_folder):
+        for file in files:
+            path_temp = os.path.join(root, file)
+            if path_temp.endswith('.pdf'):
+                pdf_path = path_temp
+            elif path_temp.endswith('.ipynb'):
+                pdf_path = convert_ipynb_to_pdf(path_temp)
+            elif path_temp.endswith('.py'):
+                pdf_path = convert_code_to_pdf(path_temp)
+            elif path_temp.endswith('.cpp'):
+                pdf_path = convert_code_to_pdf(path_temp)
+            else:
+                print(f"\n\nWarning: {path_temp} is not a supported file type! Consider adding functionality to convert this file type to pdf form...\n\n")
+                continue
+
+            if pdf_path not in out:
+                out.append(pdf_path)
     return out
 
 def collect_pdf_folder_data(pdf_folder,chunk_size,chunk_overlap):
@@ -706,15 +721,35 @@ def evaluate_TSNE_on_df(df):
     df['description']  = ["<br>".join(textwrap.wrap(d)) for d in list(df.chunk_text)]
     return df
 
+def filter_dark_colors(colors, threshold=80):
+    filtered_colors = {}
+    for color_name, color_hex in colors.items():
+        # Convert the color to RGB
+        r, g, b = mcolors.hex2color(color_hex)
+        r, g, b = int(r * 255), int(g * 255), int(b * 255)
+        
+        # Calculate the intensity of the color
+        intensity = (r + g + b) / 3
 
-def get_tsne_plot_params(df_init,pdf_folder,file_prefix,save_name_suffix,):
+        # If the intensity is above the threshold, add the color to the filtered list
+        if intensity > threshold:
+            filtered_colors[color_name] = color_hex
+    return filtered_colors
+
+def get_tsne_plot_params(df_init,pdf_folder,file_prefix,save_name_suffix,group_by_folder=False):
     df = df_init
     css4_colors = mcolors.CSS4_COLORS
-    all_titles = list(df.title.unique())
-    colors = list(css4_colors.keys())
+    filtered_colors = filter_dark_colors(css4_colors)
+    if not group_by_folder:
+        all_titles = list(df.title.unique())
+        titles = df.title
+    else:
+        all_titles = np.unique([x.split(os.sep)[-2] for x in list(df.title.unique())]).tolist()
+        titles = [x.split(os.sep)[-2] for x in list(df.title)]
+    colors = list(filtered_colors.keys())
     colors = np.random.choice(colors, len(all_titles), False)
     colors = sorted(colors, key=get_hsv)
-    df['color'] = [css4_colors[colors[all_titles.index(i)]] for i in list(df.title)]
+    df['color'] = [css4_colors[colors[all_titles.index(i)]] for i in titles]
     dm = {all_titles[i]: colors[i] for i in range(len(all_titles))}
 
     if not os.path.exists(f'{pdf_folder}/{file_prefix}-{save_name_suffix}-[with-TSNE].csv'):
