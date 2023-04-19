@@ -1,6 +1,6 @@
 # chapter-mapper
 
-This is a simple package for mapping PDF files and finding answers to your questions easily and efficiently by utilizing language models from OpenAI. The framework seeks to address the problem of "hallucinations" in large language models by using a director vector similarity search based on text embeddings of the inputs PDFs and query to find relevant documentation, and then it provides that context to ChatGPT to formulate a coherent answer to the question.
+This is a simple repository for mapping PDF files and finding answers to your questions easily and efficiently by utilizing language models from OpenAI. The framework seeks to address the problem of "hallucinations" in large language models by using a director vector similarity search based on text embeddings of the inputs PDFs and query to find relevant documentation, and then it provides that context to ChatGPT to formulate a coherent answer to the question.
 
 <img src="https://cdn.discordapp.com/attachments/1092808829592424509/1098106157840744558/image_from_clipboard.png" width="600" alt="Overall data processing summary.">
 
