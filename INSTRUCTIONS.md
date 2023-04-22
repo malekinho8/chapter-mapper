@@ -14,5 +14,4 @@
 
 1. Once it has downloaded, you should see a button that says `Open with Colaboratory`. Click it.
 1. The `chapter-mapper-search-plot.ipynb` notebook should open up, and you should see a button that says `Copy to Drive`. Click it and the window should open in a new tab. This will save the notebook to a folder on your Drive called `Colab Notebooks`.
-1. 
 
