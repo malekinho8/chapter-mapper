@@ -105,17 +105,25 @@ def plotmap(df, search_query, number_results, dm, all_titles, pdf_folder, EMBEDD
     search_results = list(search_text(df, search_query, number_results,EMBEDDING_MODEL))
     df_filter = filter_search(df, search_results)
     df_filter['size'] = 20
+    x_min = df['x'].min()
+    x_max = df['x'].max()
+    y_min = df['y'].min()
+    y_max = df['y'].max()
+
     if not folder_label:
-        fig = px.scatter(df, x='x', y='y', color='title', hover_data=['title', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}, template="plotly_dark", title=f"{pdf_folder} Visualized")
+        fig = px.scatter(df, x='x', y='y', color='title', hover_data=['title', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}, template="plotly_dark")
         fig.add_trace(px.scatter(df_filter, x='x', y='y', color='title', size='size', hover_data=['title', 'similarity', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}).data[0])
     else:
         df['folder'] = df.title.apply(lambda x: x.split(os.sep)[-2]) 
         df_filter['folder'] = df_filter.title.apply(lambda x: x.split(os.sep)[-2])
-        fig = px.scatter(df, x='x', y='y', color='folder', hover_data=['title', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}, template="plotly_dark", title=f"{pdf_folder} Visualized")
+        fig = px.scatter(df, x='x', y='y', color='folder', hover_data=['title', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}, template="plotly_dark")
         fig.add_trace(px.scatter(df_filter, x='x', y='y', color='folder', size='size', hover_data=['title', 'similarity', 'chapter', 'page', 'description'], color_discrete_map=dm, category_orders={'title': all_titles}).data[0])
-    fig.update_layout(hoverlabel=dict(font=dict(family='Arial', size=12, color='black'),align='left'))
+    
+    fig.update_layout(hoverlabel=dict(font=dict(family='Arial', size=12, color='black'),align='left'),
+                    title=f"{pdf_folder} Visualized",
+                    xaxis=dict(range=[x_min, x_max]),  # Update the x-axis range
+                    yaxis=dict(range=[y_min, y_max]))  # Update the y-axis range
     fig.show()
-
     return fig
 
 def vector_similarity(x: List[float], y: List[float]) -> float:
