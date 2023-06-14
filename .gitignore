@@ -4,23 +4,36 @@
 *.html
 
 # ignore everything in pdf folders
-4453/*
-212-lab4/*
-bioprinting/*
-bond-graphs/*
-dsp/*
-ehs-mit/*
-fangzhou-xia/*
-feedback-control/*
-gass/*
-hicham-hamoudi/*
-labview/*
-profiles/*
-robotics-2.121/*
-test/*
-unit-tests/*
-xia-afm-book/*
-sandbox/*
+4453/
+212-lab4/
+bioprinting/
+bond-graphs/
+dsp/
+ehs-mit/
+fangzhou-xia/
+feedback-control/
+gass/
+hicham-hamoudi/
+labview/
+profiles/
+robotics-2.121/
+test/
+unit-tests/
+xia-afm-book/
+sandbox/
+asada/
+.vscode/
+
+# any file with malek-chapter-mapper in the name
+*malek-chapter-mapper*
+*mbair-key*
+
+# anything with __pycache__
+__pycache__/
+
+# ipynb checkpoints
+.ipynb_checkpoints/
+
 
 
 
