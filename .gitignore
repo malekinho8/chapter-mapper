@@ -3,6 +3,9 @@
 *.csv
 *.html
 
+# But not index.html
+!index.html
+
 # ignore everything in pdf folders
 4453/
 212-lab4/
