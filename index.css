@@ -19,7 +19,6 @@ body {
 h1, h2, h3, h4 {
     font-family: "Work Sans";
     color: rgb(36, 41, 46);
-    text-align: center;
 }
 
 h1 {
@@ -30,6 +29,7 @@ h1 {
 }
 
 h2 {
+    text-align: center;
     font-size: 30px;
     font-weight: 600;
     margin: 60px 0px 10px 0px;
